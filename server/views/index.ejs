@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stripe Checkout</title>
+
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+
+  <body
+    class="bg-gradient-to-br from-slate-100 via-gray-100 to-slate-200 min-h-screen flex items-center justify-center p-6"
+  >
+    <div class="w-full max-w-5xl bg-white rounded-3xl shadow-2xl p-8">
+      <!-- ================= TOP TOGGLE ================= -->
+      <div class="flex justify-center mb-8">
+        <div class="bg-gray-100 rounded-2xl flex p-1">
+          <button
+            id="tabCheckout"
+            onclick="switchTab('checkout')"
+            class="px-6 py-2 rounded-xl font-semibold bg-white shadow text-gray-900"
+          >
+            🛒 Checkout
+          </button>
+          <button
+            id="tabBilling"
+            onclick="switchTab('billing')"
+            class="px-6 py-2 rounded-xl font-semibold text-gray-500"
+          >
+            ⚙️ Manage Billing
+          </button>
+        </div>
+      </div>
+
+      <!-- ================= CHECKOUT ================= -->
+      <div id="checkoutSection" class="space-y-6">
+        <h2 class="text-4xl font-extrabold text-center text-gray-900">
+          Stripe Checkout
+        </h2>
+
+        <!-- PAYMENT TYPE -->
+        <div class="flex justify-center gap-6">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="paymentType" value="one_time" checked />
+            One-time
+          </label>
+
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="paymentType" value="subscription" />
+            Subscription
+          </label>
+        </div>
+
+        <!-- ================= SUBSCRIPTION SUMMARY ================= -->
+        <div
+          id="subscriptionBox"
+          class="hidden border rounded-2xl p-5 bg-gray-50"
+        >
+          <h3 class="font-semibold text-lg mb-3">Subscription Plan</h3>
+
+          <select
+            id="plan"
+            class="w-full border rounded-xl p-3 mb-4"
+            onchange="renderPlanSummary()"
+          >
+            <option value="">Select a plan</option>
+            <option value="basic" data-price="5">Basic — $5 / month</option>
+            <option value="premium" data-price="50">
+              Premium — $50 / year
+            </option>
+          </select>
+
+          <div
+            id="planSummary"
+            class="hidden flex justify-between items-center bg-white border rounded-xl p-4"
+          >
+            <div>
+              <p id="planName" class="font-semibold"></p>
+              <p class="text-sm text-gray-500">Subscription</p>
+            </div>
+            <p id="planPrice" class="font-bold text-lg"></p>
+          </div>
+        </div>
+
+        <!-- ================= PRODUCT ================= -->
+        <div id="productBox">
+          <h3 class="font-semibold text-lg">Add Product</h3>
+
+          <div class="grid grid-cols-3 gap-4 mt-3">
+            <!-- Product Name -->
+            <div>
+              <label
+                for="name"
+                class="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Product Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                class="w-full border p-3 rounded-xl"
+              />
+            </div>
+
+            <!-- Price -->
+            <div>
+              <label
+                for="price"
+                class="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Price
+              </label>
+              <input
+                id="price"
+                type="number"
+                class="w-full border p-3 rounded-xl"
+              />
+            </div>
+
+            <!-- Quantity -->
+            <div>
+              <label
+                for="qty"
+                class="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Quantity
+              </label>
+              <input
+                id="qty"
+                type="number"
+                value="1"
+                min="1"
+                class="w-full border p-3 rounded-xl"
+              />
+            </div>
+          </div>
+
+          <button
+            onclick="addProduct()"
+            class="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold"
+          >
+            ➕ Add Product
+          </button>
+        </div>
+
+        <!-- ================= CART ================= -->
+        <div id="cartSection">
+          <div class="flex justify-between">
+            <span class="font-semibold">Cart</span>
+            <span id="total" class="font-bold">$0</span>
+          </div>
+
+          <ul id="cart" class="space-y-2 mt-3"></ul>
+          <p id="empty" class="text-center text-gray-400 hidden">
+            Cart is empty
+          </p>
+        </div>
+
+        <!-- CTA -->
+        <button
+          id="checkoutBtn"
+          onclick="checkout()"
+          class="w-full bg-emerald-600 text-white py-4 rounded-2xl text-xl font-bold"
+        >
+          Pay Now →
+        </button>
+      </div>
+
+      <!-- ================= BILLING ================= -->
+      <div id="billingSection" class="hidden space-y-6">
+        <h2 class="text-3xl font-extrabold text-center text-gray-900">
+          Manage Subscription
+        </h2>
+
+        <p class="text-center text-gray-600">
+          Open Stripe Billing Portal to manage plans and invoices
+        </p>
+
+        <input
+          id="customerId"
+          placeholder="cus_xxxxxxxxxxxxxx"
+          class="w-full border p-4 rounded-xl"
+        />
+
+        <button
+          onclick="openBillingPortal()"
+          class="w-full bg-indigo-600 text-white py-4 rounded-2xl text-xl font-bold"
+        >
+          Open Billing Portal
+        </button>
+      </div>
+    </div>
+
+    <!-- ================= SCRIPT ================= -->
+    <script>
+      const products = [];
+
+      // ELEMENT REFERENCES
+      const subscriptionBox = document.getElementById("subscriptionBox");
+      const productBox = document.getElementById("productBox");
+      const cartSection = document.getElementById("cartSection");
+      const checkoutBtn = document.getElementById("checkoutBtn");
+
+      const checkoutSection = document.getElementById("checkoutSection");
+      const billingSection = document.getElementById("billingSection");
+
+      const nameInput = document.getElementById("name");
+      const priceInput = document.getElementById("price");
+      const qtyInput = document.getElementById("qty");
+
+      const cart = document.getElementById("cart");
+      const empty = document.getElementById("empty");
+      const totalEl = document.getElementById("total");
+
+      const customerIdInput = document.getElementById("customerId");
+
+      // TAB SWITCH
+      function switchTab(tab) {
+        checkoutSection.classList.toggle("hidden", tab !== "checkout");
+        billingSection.classList.toggle("hidden", tab !== "billing");
+      }
+
+      // PAYMENT TYPE TOGGLE
+      document
+        .querySelectorAll("input[name='paymentType']")
+        .forEach((radio) => {
+          radio.addEventListener("change", () => {
+            const isSubscription =
+              document.querySelector("input[name='paymentType']:checked")
+                .value === "subscription";
+
+            subscriptionBox.classList.toggle("hidden", !isSubscription);
+            productBox.classList.toggle("hidden", isSubscription);
+            cartSection.classList.toggle("hidden", isSubscription);
+
+            checkoutBtn.textContent = isSubscription
+              ? "Subscribe Now →"
+              : "Pay Now →";
+          });
+        });
+
+      // SUBSCRIPTION SUMMARY
+      function renderPlanSummary() {
+        const plan = document.getElementById("plan");
+        const option = plan.selectedOptions[0];
+        if (!option || !option.dataset.price) return;
+
+        document.getElementById("planSummary").classList.remove("hidden");
+        document.getElementById("planName").textContent =
+          option.text.split("—")[0];
+        document.getElementById(
+          "planPrice"
+        ).textContent = `$${option.dataset.price}`;
+      }
+
+      // ADD PRODUCT
+      function addProduct() {
+        const name = nameInput.value.trim();
+        const price = Number(priceInput.value);
+        const qty = Number(qtyInput.value);
+
+        if (!name || price <= 0 || qty <= 0) {
+          alert("Invalid product data");
+          return;
+        }
+
+        products.push({ name, price, quantity: qty });
+        nameInput.value = "";
+        priceInput.value = "";
+        qtyInput.value = 1;
+
+        renderCart();
+      }
+
+      // REMOVE PRODUCT
+      function removeProduct(index) {
+        products.splice(index, 1);
+        renderCart();
+      }
+
+      // RENDER CART
+      function renderCart() {
+        cart.innerHTML = "";
+        let total = 0;
+
+        if (!products.length) {
+          empty.classList.remove("hidden");
+          totalEl.textContent = "$0";
+          return;
+        }
+
+        empty.classList.add("hidden");
+
+        products.forEach((p, i) => {
+          const sub = p.price * p.quantity;
+          total += sub;
+
+          cart.innerHTML += `
+        <li class="grid grid-cols-4 items-center border p-3 rounded-xl">
+          <span>${p.name}</span>
+          <span>$${p.price}</span>
+          <span>× ${p.quantity}</span>
+          <button onclick="removeProduct(${i})" class="text-red-500">✕</button>
+        </li>`;
+        });
+
+        totalEl.textContent = `$${total}`;
+      }
+
+      // CHECKOUT
+      async function checkout() {
+        const type = document.querySelector(
+          "input[name='paymentType']:checked"
+        ).value;
+
+        try {
+          if (type === "subscription") {
+            const plan = document.getElementById("plan").value;
+            if (!plan) return alert("Select a plan");
+
+            const res = await axios.post(
+              `http://localhost:5000/api/v1/payment/checkout?mode=subscription&plan=${plan}`
+            );
+            window.location.href = res.data.data.url;
+            return;
+          }
+
+          if (!products.length) return alert("Cart empty");
+
+          const res = await axios.post(
+            "http://localhost:5000/api/v1/payment/checkout?mode=payment",
+            { products }
+          );
+          window.location.href = res.data.data.url;
+        } catch (err) {
+          alert("Checkout failed");
+          console.error(err);
+        }
+      }
+
+      // BILLING PORTAL
+      async function openBillingPortal() {
+        const customerId = customerIdInput.value.trim();
+        if (!customerId) return alert("Customer ID required");
+
+        try {
+          const res = await axios.post(
+            `http://localhost:5000/api/v1/payment/billing-portal/${customerId}`
+          );
+
+          // ✅ Redirect to Stripe Billing Portal
+          window.location.href = res.data.url;
+        } catch (err) {
+          console.error(err);
+          alert("Unable to open billing portal");
+        }
+      }
+    </script>
+  </body>
+</html>
